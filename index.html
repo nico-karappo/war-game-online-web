@@ -20,9 +20,7 @@
 
   <!-- Firebase を CDN 経由で読み込む -->
   <script type="module">
-    // ★ここ重要★
-    // import の URL のバージョン番号 (例: 12.6.0) は
-    // Firebase コンソールの「CDN 用サンプルコード」に出ている数字に合わせてください。
+    // ★バージョン 12.6.0 で統一
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
     import {
       getFirestore,
@@ -34,7 +32,10 @@
       limit,
     } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
-    // ===== ここに Firebase コンソールに表示されていた firebaseConfig を貼り付ける =====
+    // ===== ここに Firebase コンソールに表示されていた firebaseConfig を貼り付けてください =====
+    // Firebase コンソール:
+    // プロジェクト概要 → war-game-web → 歯車アイコン → アプリの設定
+    // → 「Firebase SDK snippet」→「構成」
     const firebaseConfig = {
     apiKey: "AIzaSyDllHnBnkhRFYFeDJtAQmVjMOLwUv5gSyE",
     authDomain: "war-game-online-77a9a.firebaseapp.com",
@@ -42,9 +43,9 @@
     storageBucket: "war-game-online-77a9a.firebasestorage.app",
     messagingSenderId: "851982602094",
     appId: "1:851982602094:web:906903954159882bbbfb7f",
-    measurementId: "G-GYW85JHDGQ",
+    measurementId: "G-GYW85JHDGQ"
     };
-    // -------------------------------------------------------------------------
+    // ========================================================================
 
     // Firebase 初期化
     const app = initializeApp(firebaseConfig);
@@ -63,7 +64,10 @@
           message: "Hello from GitHub Pages!",
         });
         resultEl.textContent =
-          "書き込み OK\nドキュメントID: " + docRef.id + "\ncreatedAt: " + new Date(now).toLocaleString("ja-JP");
+          "書き込み OK\nドキュメントID: " +
+          docRef.id +
+          "\ncreatedAt: " +
+          new Date(now).toLocaleString("ja-JP");
       } catch (e) {
         console.error(e);
         resultEl.textContent = "書き込みエラー:\n" + e;
