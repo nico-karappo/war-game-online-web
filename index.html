@@ -18,6 +18,38 @@
 
   <pre id="result" style="white-space: pre-wrap; background: #f5f5f5; padding: 8px;"></pre>
 
+  <hr>
+
+  <h2>オンライン対戦マッチング テスト</h2>
+
+  <div>
+    <label>
+      プレイヤー名:
+      <input id="playerNameInput" type="text" placeholder="例: playerA" />
+    </label>
+    <button id="joinMatchBtn">部屋に参加 (joinMatch)</button>
+  </div>
+
+  <div style="margin-top: 8px;">
+    <p>取得した roomId: <span id="roomIdSpan">(まだなし)</span></p>
+    <p>自分の playerIndex: <span id="playerIndexSpan">-</span></p>
+    <p>roomStatus: <span id="roomStatusSpan">-</span></p>
+  </div>
+
+  <div style="margin-top: 8px;">
+    <label>
+      対戦開始する roomId:
+      <input id="roomIdInput" type="text" placeholder="上の roomId をコピペ" />
+    </label>
+    <button id="startMatchBtn">対戦開始 (startMatch)</button>
+  </div>
+
+  <div style="margin-top: 8px;">
+    <p>作成された gameId: <span id="gameIdSpan">(まだなし)</span></p>
+  </div>
+
+  <pre id="functionsResult" style="white-space: pre-wrap; background: #f0f0f0; padding: 8px;"></pre>
+
   <!-- Firebase を CDN 経由で読み込む -->
   <script type="module">
     // ★バージョン 12.6.0 で統一
@@ -31,31 +63,102 @@
       orderBy,
       limit,
     } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+    import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-functions.js";
 
-    // ===== ここに Firebase コンソールに表示されていた firebaseConfig を貼り付けてください =====
-    // Firebase コンソール:
-    // プロジェクト概要 → war-game-web → 歯車アイコン → アプリの設定
-    // → 「Firebase SDK snippet」→「構成」
+    // ===== Firebase コンソールの構成を貼り付け =====
     const firebaseConfig = {
-    apiKey: "AIzaSyDllHnBnkhRFYFeDJtAQmVjMOLwUv5gSyE",
-    authDomain: "war-game-online-77a9a.firebaseapp.com",
-    projectId: "war-game-online-77a9a",
-    storageBucket: "war-game-online-77a9a.firebasestorage.app",
-    messagingSenderId: "851982602094",
-    appId: "1:851982602094:web:906903954159882bbbfb7f",
-    measurementId: "G-GYW85JHDGQ"
+      apiKey: "AIzaSyDllHnBnkhRFYFeDJtAQmVjMOLwUv5gSyE",
+      authDomain: "war-game-online-77a9a.firebaseapp.com",
+      projectId: "war-game-online-77a9a",
+      storageBucket: "war-game-online-77a9a.firebasestorage.app",
+      messagingSenderId: "851982602094",
+      appId: "1:851982602094:web:906903954159882bbbfb7f",
+      measurementId: "G-GYW85JHDGQ",
     };
-    // ========================================================================
+    // =========================================
 
     // Firebase 初期化
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
+    // Cloud Functions（リージョン us-central1）
+    const functions = getFunctions(app, "us-central1");
+    const joinMatchFn = httpsCallable(functions, "joinMatch");
+    const startMatchFn = httpsCallable(functions, "startMatch");
+
+    // Firestore テスト用 DOM
     const resultEl = document.getElementById("result");
     const saveBtn = document.getElementById("saveBtn");
     const loadBtn = document.getElementById("loadBtn");
 
-    // Firestore にテストデータを書き込み
+    // マッチングテスト用 DOM
+    const playerNameInput = document.getElementById("playerNameInput");
+    const joinMatchBtn = document.getElementById("joinMatchBtn");
+    const roomIdSpan = document.getElementById("roomIdSpan");
+    const playerIndexSpan = document.getElementById("playerIndexSpan");
+    const roomStatusSpan = document.getElementById("roomStatusSpan");
+
+    const roomIdInput = document.getElementById("roomIdInput");
+    const startMatchBtn = document.getElementById("startMatchBtn");
+    const gameIdSpan = document.getElementById("gameIdSpan");
+
+    const functionsResult = document.getElementById("functionsResult");
+
+    // ========== joinMatch ボタン ==========
+    joinMatchBtn.addEventListener("click", async () => {
+      const name = playerNameInput.value.trim();
+      if (!name) {
+        alert("プレイヤー名を入力してください");
+        return;
+      }
+
+      functionsResult.textContent = "joinMatch 呼び出し中...";
+
+      try {
+        const res = await joinMatchFn({ playerName: name });
+        const data = res.data;
+        console.log("joinMatch result:", data);
+
+        roomIdSpan.textContent = data.roomId;
+        playerIndexSpan.textContent = String(data.playerIndex);
+        roomStatusSpan.textContent = data.roomStatus;
+
+        roomIdInput.value = data.roomId; // 下の入力欄にも自動で反映
+        functionsResult.textContent =
+          "joinMatch OK:\n" + JSON.stringify(data, null, 2);
+      } catch (err) {
+        console.error(err);
+        functionsResult.textContent = "joinMatch エラー:\n" + String(err);
+        alert("joinMatch でエラーが発生しました（コンソールを確認）");
+      }
+    });
+
+    // ========== startMatch ボタン ==========
+    startMatchBtn.addEventListener("click", async () => {
+      const roomId = roomIdInput.value.trim();
+      if (!roomId) {
+        alert("roomId を入力してください");
+        return;
+      }
+
+      functionsResult.textContent = "startMatch 呼び出し中...";
+
+      try {
+        const res = await startMatchFn({ roomId });
+        const data = res.data;
+        console.log("startMatch result:", data);
+
+        gameIdSpan.textContent = data.gameId;
+        functionsResult.textContent =
+          "startMatch OK:\n" + JSON.stringify(data, null, 2);
+      } catch (err) {
+        console.error(err);
+        functionsResult.textContent = "startMatch エラー:\n" + String(err);
+        alert("startMatch でエラーが発生しました（コンソールを確認）");
+      }
+    });
+
+    // ========== Firestore にテストデータを書き込み ==========
     saveBtn.addEventListener("click", async () => {
       try {
         const now = Date.now();
@@ -74,7 +177,7 @@
       }
     });
 
-    // Firestore から最新データを読む
+    // ========== Firestore から最新データを読む ==========
     loadBtn.addEventListener("click", async () => {
       try {
         const q = query(
