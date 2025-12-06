@@ -1,11 +1,10 @@
 // src/war_game/serverApi.js
 // Firebase Functions（war-game-online-functions）側の HTTP エンドポイントを呼ぶラッパー
-// - createNewGameHttp
-// - applyPlayerActionHttp
-// - requestAiActionHttp
+// - createNewGame
+// - applyPlayerAction
+// - requestAiAction
 
 // ---- Functions のベース URL ----
-// あなたのプロジェクトID & リージョン(us-central1)に合わせて固定
 const FUNCTIONS_BASE_URL =
   "https://us-central1-war-game-online-77a9a.cloudfunctions.net";
 
@@ -16,7 +15,7 @@ async function postJson(path, body) {
   const url = `${FUNCTIONS_BASE_URL}/${path}`;
 
   const resp = await fetch(url, {
-    method: "POST",
+    method: "POST", // ★必ず POST
     headers: {
       "Content-Type": "application/json",
     },
@@ -46,12 +45,11 @@ async function postJson(path, body) {
 
 /**
  * 新しい対戦用 GameState を作成する
- * - サーバの createNewGameHandler と同じ構造
- * @param {Object} req
+ * @param {Object} req  省略可
  * @returns {Promise<{ ok: true, state: any }>}
  */
-export async function createNewGame(req) {
-  return postJson("createNewGameHttp", req);
+export async function createNewGame(req = {}) {
+  return postJson("createNewGame", req);
 }
 
 // -----------------------------
@@ -77,28 +75,24 @@ export async function submitAction(params) {
   const reqBody = {
     state,
     actions,
-    expectedTurn: state.turn, // サーバ側の expectedTurn チェックと合わせる
+    expectedTurn: state.turn,
   };
 
-  const res = await postJson("applyPlayerActionHttp", reqBody);
-  // res は { ok:true, state: ... } の想定
+  const res = await postJson("applyPlayerAction", reqBody);
   return res.state;
 }
 
 // -----------------------------
-// AI 行動をサーバに問い合わせる（必要に応じて）
+// AI 行動をサーバに問い合わせる
 // -----------------------------
 
 /**
  * サーバ上の exAI / basicAI に、指定国の行動を決めさせる。
- * - state: 現在の GameState
- * - countryId: 行動させたい国ID
- * - aiLevel: "strong"（ex_ai） or "basic"
  *
  * @param {{ state: any, countryId: string, aiLevel?: "strong"|"basic" }} req
  * @returns {Promise<any>} Action オブジェクト
  */
 export async function requestAiAction(req) {
-  const res = await postJson("requestAiActionHttp", req);
+  const res = await postJson("requestAiAction", req);
   return res.action;
 }
