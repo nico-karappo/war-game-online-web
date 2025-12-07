@@ -1,6 +1,8 @@
 // src/matching.js
 
-// Firebase SDK (モジュール版) を CDN から読み込み
+// ===============================
+// Firebase v12 (CDN モジュール版)
+// ===============================
 import {
   initializeApp,
   getApp,
@@ -12,7 +14,6 @@ import {
   doc,
   onSnapshot,
   runTransaction,
-  serverTimestamp,
   collection,
   query,
   orderBy,
@@ -20,8 +21,10 @@ import {
   where,
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
 
-// ======================================================
-// Firebase プロジェクト設定（index.html と同じ）
+// ===============================
+// Firebase プロジェクト設定
+// （index.html と同じ内容）
+// ===============================
 const firebaseConfig = {
   apiKey: "AIzaSyDllHnBnkhRFYFeDJtAQmVjMOLwUv5gSyE",
   authDomain: "war-game-online-77a9a.firebaseapp.com",
@@ -32,14 +35,21 @@ const firebaseConfig = {
   measurementId: "G-GYW85JHDGQ",
 };
 
-// すでに別モジュールで initializeApp 済みならそれを再利用し、
-// なければここで初期化する。
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-const db = getFirestore(app);
-// ======================================================
+// すでに別モジュールで initialize 済みなら再利用
+let app;
+if (getApps().length) {
+  app = getApp();
+} else {
+  app = initializeApp(firebaseConfig);
+}
 
+const db = getFirestore(app);
+
+// =======================================
+// ロビー待機列に入る（matching/waitingRoom）
+// =======================================
 /**
- * 待機列に入る
+ * 待機列に入る（ロビーに参加）
  * @param {{ uid: string, displayName: string }} user
  */
 export async function joinMatchQueue(user) {
@@ -49,9 +59,7 @@ export async function joinMatchQueue(user) {
     const snap = await tx.get(waitingRef);
     const data = snap.exists()
       ? snap.data()
-      : {
-          players: [],
-        };
+      : { players: [] };
 
     const players = Array.isArray(data.players) ? [...data.players] : [];
 
@@ -63,22 +71,23 @@ export async function joinMatchQueue(user) {
     players.push({
       uid: user.uid,
       name: user.displayName || "NoName",
-      joinedAt: serverTimestamp(), // サーバー時刻
+      // ★ serverTimestamp() は配列内で禁止なのでクライアント時刻(ms)を保存
+      joinedAt: Date.now(),
     });
 
     tx.set(
       waitingRef,
-      {
-        players,
-      },
-      { merge: true }
+      { players },
+      { merge: true },
     );
   });
 }
 
+// =======================================
+// 待機列の状態を購読して UI を更新
+// =======================================
 /**
  * 待機列の状態を購読して UI を更新する
- * 例: 待機人数や先頭プレイヤー名をロビー画面に表示
  *
  * @param {(data: any) => void} callback
  * @returns {() => void} unsubscribe
@@ -94,12 +103,14 @@ export function subscribeWaitingRoom(callback) {
   });
 }
 
+// =======================================
+// 自分が参加している最新のゲームを購読
+// =======================================
 /**
  * 自分が参加している最新のゲームを購読する
- * → Cloud Functions 側で games ドキュメントが作られたらコールバックで通知
  *
  * @param {string} uid
- * @param {(game: any | null) => void} callback
+ * @param {(game: {id: string, [key: string]: any} | null) => void} callback
  * @returns {() => void} unsubscribe
  */
 export function subscribeMyGame(uid, callback) {
@@ -114,7 +125,7 @@ export function subscribeMyGame(uid, callback) {
     gamesRef,
     where("playerIds", "array-contains", uid),
     orderBy("createdAt", "desc"),
-    limit(1)
+    limit(1),
   );
 
   return onSnapshot(q, (snap) => {
