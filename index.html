@@ -47,6 +47,16 @@
   </div>
 
   <div style="margin-top: 8px;">
+    <h3>オンライン対戦中ゲーム状態 テスト</h3>
+    <p>監視中の gameId: <span id="watchGameIdSpan">(まだなし)</span></p>
+    <p>currentTurn (Firestore): <span id="currentTurnSpan">-</span></p>
+    <button id="onlineNextTurnBtn">
+      オンライン: submitTurn（何もしないで1ターン進める）
+    </button>
+  </div>
+
+
+  <div style="margin-top: 8px;">
     <label>
       対戦開始する roomId:
       <input id="roomIdInput" type="text" placeholder="上の roomId をコピペ" />
@@ -79,6 +89,8 @@
       query,
       orderBy,
       limit,
+      doc,
+      onSnapshot,
     } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-functions.js";
 
@@ -121,6 +133,10 @@
 
     const functionsResult = document.getElementById("functionsResult");
 
+    const watchGameIdSpan = document.getElementById("watchGameIdSpan");
+    const currentTurnSpan = document.getElementById("currentTurnSpan");
+    const onlineNextTurnBtn = document.getElementById("onlineNextTurnBtn");
+
     // Game API テスト用 DOM
     const createGameBtn = document.getElementById("createGameBtn");
     const nextTurnBtn = document.getElementById("nextTurnBtn");
@@ -129,6 +145,11 @@
 
     // 現在の GameState をブラウザ側に保持
     let currentGameState = null;
+
+    // オンライン対戦用の状態
+    let onlineGameId = null;
+    let myPlayerIndex = null;
+    let unsubscribeGame = null; // Firestore 監視の解除関数
 
     // ★createNewGame ボタン
     createGameBtn.addEventListener("click", async () => {
@@ -183,6 +204,46 @@
       }
     });
 
+    // 指定した gameId のゲーム状態を Firestore からリアルタイム購読
+    function startWatchGame(gameId) {
+      if (unsubscribeGame) {
+        // 既に何か監視していたら解除
+        unsubscribeGame();
+        unsubscribeGame = null;
+      }
+
+      const gameRef = doc(db, "games", gameId);
+      unsubscribeGame = onSnapshot(
+        gameRef,
+        (snap) => {
+          if (!snap.exists()) {
+            functionsResult.textContent = `games/${gameId} が存在しません`;
+            currentTurnSpan.textContent = "-";
+            gameStatePre.textContent = "(ゲームドキュメントなし)";
+            return;
+          }
+
+          const data = snap.data();
+          watchGameIdSpan.textContent = gameId;
+          currentTurnSpan.textContent =
+            data.currentTurn != null ? String(data.currentTurn) : "(未設定)";
+
+          if (data.state) {
+            currentGameState = data.state;
+            gameStatePre.textContent = JSON.stringify(data.state, null, 2);
+          } else {
+            currentGameState = null;
+            gameStatePre.textContent = "(state がまだありません)";
+          }
+        },
+        (error) => {
+          console.error("onSnapshot error:", error);
+          functionsResult.textContent =
+            "ゲーム状態監視中にエラー:\n" + String(error);
+        }
+      );
+    }
+
     // ★requestAiAction（東京の行動をAIに決めさせる）ボタン
     aiActionBtn.addEventListener("click", async () => {
       if (!currentGameState) {
@@ -210,6 +271,42 @@
       }
     });
 
+    onlineNextTurnBtn.addEventListener("click", async () => {
+      if (!onlineGameId) {
+        alert("まず startMatch を実行して gameId を取得してください。");
+        return;
+      }
+      if (!currentGameState) {
+        alert("GameState がまだ Firestore から取得できていません。少し待ってから再度お試しください。");
+        return;
+      }
+
+      functionsResult.textContent = "submitTurn 呼び出し中...";
+
+      try {
+        const res = await submitTurnFn({
+          gameId: onlineGameId,
+          playerIndex: myPlayerIndex ?? 0,
+          // 今は「何もしない」で1ターン進めるテストなので actions は空配列
+          actions: [],
+        });
+
+        const data = res.data;
+        console.log("submitTurn result:", data);
+
+        // state の実体は onSnapshot 側で更新されるので、
+        // ここでは currentTurn 表示だけにしておく
+        functionsResult.textContent =
+          "submitTurn OK: currentTurn = " + data.currentTurn;
+      } catch (err) {
+        console.error(err);
+        functionsResult.textContent =
+          "submitTurn エラー:\n" + String(err);
+        alert("submitTurn でエラーが発生しました（コンソールを確認）");
+      }
+    });
+
+
     // ========== joinMatch ボタン ==========
     joinMatchBtn.addEventListener("click", async () => {
       const name = playerNameInput.value.trim();
@@ -225,6 +322,7 @@
         const data = res.data;
         console.log("joinMatch result:", data);
 
+        myPlayerIndex = data.playerIndex;
         roomIdSpan.textContent = data.roomId;
         playerIndexSpan.textContent = String(data.playerIndex);
         roomStatusSpan.textContent = data.roomStatus;
@@ -257,6 +355,11 @@
         gameIdSpan.textContent = data.gameId;
         functionsResult.textContent =
           "startMatch OK:\n" + JSON.stringify(data, null, 2);
+
+        // オンライン用に gameId を保持し、Firestore の games/<gameId> を監視
+        onlineGameId = data.gameId;
+        watchGameIdSpan.textContent = data.gameId;
+        startWatchGame(data.gameId);
       } catch (err) {
         console.error(err);
         functionsResult.textContent =
