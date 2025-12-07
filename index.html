@@ -51,7 +51,7 @@
     <p>監視中の gameId: <span id="watchGameIdSpan">(まだなし)</span></p>
     <p>currentTurn (Firestore): <span id="currentTurnSpan">-</span></p>
     <button id="onlineNextTurnBtn">
-      オンライン: submitTurn（何もしないで1ターン進める）
+      準備完了
     </button>
   </div>
 
@@ -332,13 +332,14 @@
         return;
       }
 
-      functionsResult.textContent = "submitTurn 呼び出し中...";
+      functionsResult.textContent =
+        "submitTurn（準備完了）呼び出し中...";
 
       try {
         const res = await submitTurnFn({
           gameId: onlineGameId,
           playerIndex: myPlayerIndex ?? 0,
-          // 今は「何もしない」で1ターン進めるテストなので actions は空配列
+          // 今は「全て内政で準備完了」というテストなので actions は空配列
           actions: [],
         });
 
@@ -356,6 +357,7 @@
         alert("submitTurn でエラーが発生しました（コンソールを確認）");
       }
     });
+
 
 
     // ========== joinMatch ボタン ==========
