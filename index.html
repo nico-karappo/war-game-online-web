@@ -114,6 +114,7 @@
     const functions = getFunctions(app, "us-central1");
     const joinMatchFn = httpsCallable(functions, "joinMatch");
     const startMatchFn = httpsCallable(functions, "startMatch");
+    const submitTurnFn = httpsCallable(functions, "submitTurn");
 
     // Firestore テスト用 DOM
     const resultEl = document.getElementById("result");
