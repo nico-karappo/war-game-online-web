@@ -14,7 +14,6 @@ import {
   runTransaction,
   collection,
   query,
-  orderBy,
   limit,
   where,
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
@@ -133,27 +132,47 @@ export function subscribeMyGame(uid, callback) {
 }
 
 /**
- * gameId で games/<gameId> を購読する
+ * 自分が参加している最新のゲームを購読する
  *
- * @param {string} gameId
+ * @param {string} uid
  * @param {(game: {id: string, [key: string]: any} | null) => void} callback
  * @returns {() => void} unsubscribe
  */
-export function subscribeGame(gameId, callback) {
-  if (!gameId) {
+export function subscribeMyGame(uid, callback) {
+  if (!uid) {
     callback(null);
     return () => {};
   }
 
-  const gameRef = doc(db, "games", gameId);
-  return onSnapshot(gameRef, (snap) => {
-    if (!snap.exists()) {
+  const gamesRef = collection(db, "games");
+
+  // ★ orderBy を使わず、playerIds に自分の uid を含むゲームを1件だけ見る
+  const q = query(
+    gamesRef,
+    where("playerIds", "array-contains", uid),
+    limit(1)
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      if (snap.empty) {
+        console.log("subscribeMyGame: no game found for uid =", uid);
+        callback(null);
+        return;
+      }
+      const docSnap = snap.docs[0];
+      const gameData = { id: docSnap.id, ...docSnap.data() };
+      console.log("subscribeMyGame: game found =", gameData.id);
+      callback(gameData);
+    },
+    (error) => {
+      console.error("subscribeMyGame error:", error);
       callback(null);
-      return;
     }
-    callback({ id: snap.id, ...snap.data() });
-  });
+  );
 }
+
 
 /**
  * Cloud Functions submitTurn を呼び出す
