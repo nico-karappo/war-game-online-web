@@ -152,6 +152,10 @@
     let myPlayerIndex = null;
     let unsubscribeGame = null; // Firestore 監視の解除関数
 
+    // ★追加：参加している room の監視用
+    let watchingRoomId = null;
+    let unsubscribeRoom = null;
+
     // ★createNewGame ボタン
     createGameBtn.addEventListener("click", async () => {
       functionsResult.textContent = "createNewGame 呼び出し中...";
@@ -204,6 +208,52 @@
         alert("submitAction でエラーが発生しました（コンソールを確認）");
       }
     });
+
+    // 指定した roomId の部屋情報を Firestore からリアルタイム購読
+    function startWatchRoom(roomId) {
+      // すでに他の room を監視していたら解除
+      if (unsubscribeRoom) {
+        unsubscribeRoom();
+        unsubscribeRoom = null;
+      }
+
+      watchingRoomId = roomId;
+      const roomRef = doc(db, "rooms", roomId);
+
+      unsubscribeRoom = onSnapshot(
+        roomRef,
+        (snap) => {
+          if (!snap.exists()) {
+            roomStatusSpan.textContent = "(room not found)";
+            return;
+          }
+
+          const data = snap.data();
+          // status を常に最新表示
+          roomStatusSpan.textContent = data.status ?? "-";
+
+          const gameId = data.gameId;
+
+          // ★ in_game かつ gameId がセットされたら、そのゲームを監視開始
+          if (data.status === "in_game" && gameId) {
+            // すでに同じ gameId を見ていたら何もしない
+            if (onlineGameId === gameId) return;
+
+            onlineGameId = gameId;
+            gameIdSpan.textContent = gameId;
+            watchGameIdSpan.textContent = gameId;
+
+            startWatchGame(gameId);
+          }
+        },
+        (error) => {
+          console.error("room onSnapshot error:", error);
+          functionsResult.textContent =
+            "マッチング部屋の監視中にエラー:\n" + String(error);
+        }
+      );
+    }
+
 
     // 指定した gameId のゲーム状態を Firestore からリアルタイム購読
     function startWatchGame(gameId) {
@@ -329,6 +379,10 @@
         roomStatusSpan.textContent = data.roomStatus;
 
         roomIdInput.value = data.roomId; // 下の入力欄にも自動で反映
+
+        // ★追加：この room の Firestore ドキュメントを監視開始
+        startWatchRoom(data.roomId);
+
         functionsResult.textContent =
           "joinMatch OK:\n" + JSON.stringify(data, null, 2);
       } catch (err) {
@@ -361,6 +415,8 @@
         onlineGameId = data.gameId;
         watchGameIdSpan.textContent = data.gameId;
         startWatchGame(data.gameId);
+        // ★念のため room も監視しておく
+        startWatchRoom(roomId);
       } catch (err) {
         console.error(err);
         functionsResult.textContent =
