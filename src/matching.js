@@ -45,7 +45,10 @@ if (getApps().length) {
 
 const db = getFirestore(app);
 const functions = getFunctions(app, "us-central1");
+
+// Cloud Functions ラッパー
 const submitTurnFn = httpsCallable(functions, "submitTurn");
+const forceLobbyMatchFn = httpsCallable(functions, "forceLobbyMatch");
 
 /**
  * 待機列に入る（ロビーに参加）
@@ -167,4 +170,16 @@ export async function submitTurn(gameId, playerIndex, actions) {
     actions: Array.isArray(actions) ? actions : [],
   });
   return res.data;
+}
+
+/**
+ * 3分経過時などに、ロビー内プレイヤーでマッチングを実行させる
+ */
+export async function callForceLobbyMatch() {
+  try {
+    await forceLobbyMatchFn();
+    console.log("forceLobbyMatch called.");
+  } catch (err) {
+    console.error("forceLobbyMatch error:", err);
+  }
 }

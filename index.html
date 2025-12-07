@@ -74,14 +74,15 @@
   </section>
 
   <!-- ロビー ＋ ゲーム用スクリプト -->
-  <script type="module">
-    import {
-      joinMatchQueue,
-      subscribeWaitingRoom,
-      subscribeMyGame,
-      subscribeGame,
-      submitTurn as submitTurnApi,
-    } from "./src/matching.js";
+<script type="module">
+  import {
+    joinMatchQueue,
+    subscribeWaitingRoom,
+    subscribeMyGame,
+    subscribeGame,
+    submitTurn as submitTurnApi,
+    callForceLobbyMatch,
+  } from "./src/matching.js";
 
     // ===== ロビー用 DOM =====
     const lobbyPlayerNameInput = document.getElementById("lobbyPlayerNameInput");
@@ -118,6 +119,8 @@
     // ===== カウントダウン用の状態 =====
     let firstJoinedMs = null; // 最初に入った人の joinedAt(ms)
     let timerId = null;
+    let hasRequestedForceMatch = false; // 3分経過後に forceLobbyMatch を一度だけ呼ぶためのフラグ
+
 
     function formatJoinedTime(ms) {
       const d = new Date(ms);
@@ -129,7 +132,7 @@
     }
 
     function updateTimer() {
-      if (!firstJoinedMs) {
+      if (firstJoinedMs == null) {
         lobbyTimerSpan.textContent = "-";
         return;
       }
@@ -141,6 +144,13 @@
       if (remaining <= 0) {
         lobbyTimerSpan.textContent =
           "3分経過（サーバー側でマッチング判定中…）";
+
+        // ★ このクライアントからは一度だけ forceLobbyMatch を呼ぶ
+        if (!hasRequestedForceMatch) {
+          hasRequestedForceMatch = true;
+          // 成否は callForceLobbyMatch 内でログ出力だけしておけば十分
+          callForceLobbyMatch();
+        }
         return;
       }
 
@@ -150,6 +160,7 @@
       lobbyTimerSpan.textContent =
         `${min}:${String(s).padStart(2, "0")} 後に自動マッチング（1人目参加から）`;
     }
+
 
     function startTimerIfNeeded() {
       if (!timerId) {
@@ -191,13 +202,23 @@
         .filter((v) => v != null);
 
       if (validTimes.length > 0) {
-        firstJoinedMs = Math.min(...validTimes);
+        const newFirst = Math.min(...validTimes);
+
+        // 最初に入室した時刻が変わったら、新しい 3分カウントを開始
+        if (firstJoinedMs === null || newFirst !== firstJoinedMs) {
+          firstJoinedMs = newFirst;
+          hasRequestedForceMatch = false;
+        }
+
         startTimerIfNeeded();
         lobbyStatusSpan.textContent = "ロビー待機中…";
       } else {
+        // ロビーが空になったらタイマーとフラグをリセット
         stopTimer();
+        hasRequestedForceMatch = false;
         lobbyStatusSpan.textContent = "プレイヤー待機中…";
       }
+
 
       // プレイヤー一覧を描画
       lobbyPlayersList.innerHTML = "";
