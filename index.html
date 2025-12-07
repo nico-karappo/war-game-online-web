@@ -48,15 +48,42 @@
     </div>
   </section>
 
-  <!-- ロビー用スクリプト -->
+  <!-- ★ ここからゲーム本体表示エリア -->
+  <section id="gameSection" style="margin-top: 24px; border-top: 1px solid #ccc; padding-top: 16px; display: none;">
+    <h2>対戦中ゲーム</h2>
+    <p>gameId: <span id="gameIdSpan">(未割り当て)</span></p>
+    <p>currentTurn: <span id="gameCurrentTurnSpan">-</span></p>
+    <p>ゲーム状態: <span id="gamePhaseSpan">-</span></p>
+
+    <div style="margin-top: 8px;">
+      <button id="readyButton">このターンの準備完了（submitTurn）</button>
+    </div>
+
+    <div style="margin-top: 8px;">
+      <h3>ゲーム内部状態（とりあえず JSON 表示）</h3>
+      <p style="font-size: 0.9em;">
+        ※まずは Cloud Functions 側のロジックとつながっているか確認するために、
+        <code>state</code> 全体をそのまま表示しています。<br />
+        後でここをマップ UI やコマンド入力 UI に差し替えていきましょう。
+      </p>
+      <pre
+        id="gameStatePre"
+        style="white-space: pre-wrap; background:#eef; padding:8px; max-height: 400px; overflow:auto;"
+      ></pre>
+    </div>
+  </section>
+
+  <!-- ロビー ＋ ゲーム用スクリプト -->
   <script type="module">
     import {
       joinMatchQueue,
       subscribeWaitingRoom,
       subscribeMyGame,
+      subscribeGame,
+      submitTurn as submitTurnApi,
     } from "./src/matching.js";
 
-    // ===== DOM 取得 =====
+    // ===== ロビー用 DOM =====
     const lobbyPlayerNameInput = document.getElementById("lobbyPlayerNameInput");
     const joinLobbyBtn = document.getElementById("joinLobbyBtn");
     const myLobbyUidSpan = document.getElementById("myLobbyUidSpan");
@@ -67,12 +94,22 @@
     const myLobbyIndexSpan = document.getElementById("myLobbyIndexSpan");
     const myLobbyGameIdSpan = document.getElementById("myLobbyGameIdSpan");
 
+    // ===== ゲーム用 DOM =====
+    const gameSection = document.getElementById("gameSection");
+    const gameIdSpan = document.getElementById("gameIdSpan");
+    const gameCurrentTurnSpan = document.getElementById("gameCurrentTurnSpan");
+    const gamePhaseSpan = document.getElementById("gamePhaseSpan");
+    const gameStatePre = document.getElementById("gameStatePre");
+    const readyButton = document.getElementById("readyButton");
+
     // ===== ロビー用 UID をローカルに保持 =====
     const LOBBY_UID_KEY = "wgo_lobby_uid_v1";
     let lobbyUid = localStorage.getItem(LOBBY_UID_KEY);
     if (!lobbyUid) {
       lobbyUid =
-        (window.crypto && window.crypto.randomUUID && window.crypto.randomUUID()) ||
+        (window.crypto &&
+          window.crypto.randomUUID &&
+          window.crypto.randomUUID()) ||
         "uid-" + Math.random().toString(36).slice(2);
       localStorage.setItem(LOBBY_UID_KEY, lobbyUid);
     }
@@ -150,9 +187,7 @@
 
       // 最初の joinedAt を取得（タイマー用）
       const validTimes = sorted
-        .map((p) =>
-          typeof p.joinedAt === "number" ? p.joinedAt : null
-        )
+        .map((p) => (typeof p.joinedAt === "number" ? p.joinedAt : null))
         .filter((v) => v != null);
 
       if (validTimes.length > 0) {
@@ -181,8 +216,7 @@
           }
 
           li.textContent =
-            `${p.name ?? "NoName"} ${timeLabel}` +
-            (isMe ? " ← あなた" : "");
+            `${p.name ?? "NoName"} ${timeLabel}` + (isMe ? " ← あなた" : "");
           lobbyPlayersList.appendChild(li);
         });
       }
@@ -192,13 +226,118 @@
       myLobbyIndexSpan.textContent = myIndex >= 0 ? String(myIndex + 1) : "-";
     });
 
-    // ===== 自分が割り当てられたゲームを購読 =====
+    // ===== ゲーム購読用の状態 =====
+    let currentGameId = null;
+    let myPlayerIndex = null;
+    let unsubscribeGame = null;
+    let latestGameData = null;
+
+    // 自分に割り当てられた gameId を監視
     subscribeMyGame(lobbyUid, (game) => {
       if (!game) {
         myLobbyGameIdSpan.textContent = "(まだなし)";
+        gameSection.style.display = "none";
+        gameIdSpan.textContent = "(未割り当て)";
+        gameCurrentTurnSpan.textContent = "-";
+        gamePhaseSpan.textContent = "-";
+        gameStatePre.textContent = "";
+        currentGameId = null;
+        myPlayerIndex = null;
+        latestGameData = null;
+        if (unsubscribeGame) {
+          unsubscribeGame();
+          unsubscribeGame = null;
+        }
         return;
       }
-      myLobbyGameIdSpan.textContent = game.id ?? "(ID不明)";
+
+      currentGameId = game.id;
+      myLobbyGameIdSpan.textContent = currentGameId;
+      gameIdSpan.textContent = currentGameId;
+      gameSection.style.display = "block";
+
+      // プレイヤー番号 (0-origin) を特定
+      if (Array.isArray(game.playerIds)) {
+        const idx = game.playerIds.indexOf(lobbyUid);
+        myPlayerIndex = idx >= 0 ? idx : 0;
+      } else {
+        myPlayerIndex = 0;
+      }
+
+      // ゲーム本体ドキュメントを監視
+      if (unsubscribeGame) {
+        unsubscribeGame();
+        unsubscribeGame = null;
+      }
+
+      unsubscribeGame = subscribeGame(currentGameId, (g) => {
+        if (!g) {
+          gameCurrentTurnSpan.textContent = "-";
+          gamePhaseSpan.textContent = "-";
+          gameStatePre.textContent = "(ゲームドキュメントが存在しません)";
+          latestGameData = null;
+          return;
+        }
+
+        latestGameData = g;
+
+        const currentTurn =
+          g.currentTurn != null
+            ? g.currentTurn
+            : g.state && g.state.turn != null
+            ? g.state.turn
+            : null;
+        gameCurrentTurnSpan.textContent =
+          currentTurn != null ? String(currentTurn) : "-";
+
+        const phase =
+          g.phase ??
+          (g.state &&
+            (g.state.phase || g.state.stage || g.state.status || null));
+        gamePhaseSpan.textContent = phase != null ? String(phase) : "-";
+
+        if (g.state) {
+          gameStatePre.textContent = JSON.stringify(g.state, null, 2);
+        } else {
+          gameStatePre.textContent = "(state がまだありません)";
+        }
+      });
+    });
+
+    // ===== 「このターンの準備完了」ボタン =====
+    readyButton.addEventListener("click", async () => {
+      if (!currentGameId) {
+        alert(
+          "まだ gameId が割り当てられていません。マッチング完了を待ってください。",
+        );
+        return;
+      }
+      if (myPlayerIndex == null) {
+        alert(
+          "自分のプレイヤー番号が未確定です。少し待ってから再度お試しください。",
+        );
+        return;
+      }
+
+      const originalLabel = readyButton.textContent;
+      readyButton.disabled = true;
+      readyButton.textContent = "送信中...";
+
+      try {
+        // まずは actions は空配列でテスト（全て内政・お任せ）
+        const res = await submitTurnApi(currentGameId, myPlayerIndex, []);
+        const newTurn =
+          res && res.currentTurn != null
+            ? String(res.currentTurn)
+            : "(不明)";
+        alert("このターンの行動を送信しました。currentTurn = " + newTurn);
+      } catch (err) {
+        console.error(err);
+        alert("submitTurn でエラーが発生しました: " + String(err));
+      } finally {
+        readyButton.disabled = false;
+        readyButton.textContent = originalLabel;
+      }
     });
 
     // ===== 「ロビーに参加」ボタン =====
@@ -221,7 +360,9 @@
         console.error(err);
         lobbyStatusSpan.textContent =
           "ロビー参加エラー: " + String(err);
-        alert("ロビーへの参加中にエラーが発生しました。コンソールを確認してください。");
+        alert(
+          "ロビーへの参加中にエラーが発生しました。コンソールを確認してください。",
+        );
       }
     });
   </script>
