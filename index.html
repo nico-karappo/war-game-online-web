@@ -2,696 +2,226 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>War Game Online - Firebase テスト</title>
+  <title>War Game Online - ロビー</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 </head>
 <body>
-  <h1>War Game Online - Firebase 接続テスト</h1>
+  <h1>War Game Online - オンラインロビー</h1>
 
-  <p>
-    下のボタンで Firestore への書き込み・読み取りテストができます。<br />
-    ※まだゲーム本体はつなげず、「通信テスト用のページ」です。
-  </p>
+  <section>
+    <h2>ロビー / 自動マッチング（8人 または 3分で開始）</h2>
+    <p>
+      ロビーに参加すると、<strong>参加人数が8人に達する</strong>か、
+      <strong>最初のプレイヤーが入室してから3分経過</strong>したタイミングで
+      自動的にマッチングされます。
+    </p>
 
-  <button id="saveBtn">テストデータを書き込む</button>
-  <button id="loadBtn">最新データを読む</button>
+    <!-- 名前入力＆ロビー参加ボタン -->
+    <div style="margin-top: 8px;">
+      <label>
+        プレイヤー名（ロビー用）:
+        <input id="lobbyPlayerNameInput" type="text" placeholder="例: あああ" />
+      </label>
+      <button id="joinLobbyBtn">ロビーに参加（キューに入る）</button>
+    </div>
 
-  <pre id="result" style="white-space: pre-wrap; background: #f5f5f5; padding: 8px;"></pre>
+    <!-- 自分のUIDやロビー状態 -->
+    <div style="margin-top: 8px;">
+      <p>自分のロビー用 UID: <span id="myLobbyUidSpan">(未生成)</span></p>
+      <p>ロビー状態: <span id="lobbyStatusSpan">-</span></p>
+      <p>マッチ開始まで: <span id="lobbyTimerSpan">-</span></p>
+      <p>現在の人数: <span id="lobbyCountSpan">0</span> / 8</p>
+    </div>
 
-  <hr>
+    <!-- プレイヤー一覧 -->
+    <div style="margin-top: 8px;">
+      <h3>ロビー内プレイヤー一覧（matching/waitingRoom）</h3>
+      <ul id="lobbyPlayersList">
+        <li>(まだ誰もいません)</li>
+      </ul>
+    </div>
 
-  <h2>Game API テスト</h2>
-  <button id="createGameBtn">createNewGame を呼ぶ</button>
-  <button id="nextTurnBtn">submitAction（何もしないで1ターン進める）</button>
-  <button id="aiActionBtn">requestAiAction（東京の行動をAIに決めさせる）</button>
+    <!-- 自分のプレイヤー番号 & gameId -->
+    <div style="margin-top: 8px;">
+      <p>ロビー制マッチでの自分のプレイヤー番号: <span id="myLobbyIndexSpan">-</span></p>
+      <p>ロビー制マッチで割り当てられた gameId: <span id="myLobbyGameIdSpan">(まだなし)</span></p>
+    </div>
+  </section>
 
-  <p>現在の GameState:</p>
-  <pre id="gameStatePre" style="white-space: pre-wrap; background:#eef; padding:8px; max-height: 300px; overflow:auto;"></pre>
-
-  <hr>
-
-  <h2>オンライン対戦マッチング テスト（2人部屋制）</h2>
-
-  <div>
-    <label>
-      プレイヤー名:
-      <input id="playerNameInput" type="text" placeholder="例: playerA" />
-    </label>
-    <button id="joinMatchBtn">部屋に参加 (joinMatch)</button>
-  </div>
-
-  <div style="margin-top: 8px;">
-    <p>取得した roomId: <span id="roomIdSpan">(まだなし)</span></p>
-    <p>自分の playerIndex: <span id="playerIndexSpan">-</span></p>
-    <p>roomStatus: <span id="roomStatusSpan">-</span></p>
-  </div>
-
-  <div style="margin-top: 8px;">
-    <h3>オンライン対戦中ゲーム状態 テスト</h3>
-    <p>監視中の gameId: <span id="watchGameIdSpan">(まだなし)</span></p>
-    <p>currentTurn (Firestore): <span id="currentTurnSpan">-</span></p>
-    <button id="onlineNextTurnBtn">
-      準備完了（submitTurn）
-    </button>
-  </div>
-
-  <div style="margin-top: 8px;">
-    <label>
-      対戦開始する roomId:
-      <input id="roomIdInput" type="text" placeholder="上の roomId をコピペ" />
-    </label>
-    <button id="startMatchBtn">対戦開始 (startMatch)</button>
-  </div>
-
-  <div style="margin-top: 8px;">
-    <p>作成された gameId: <span id="gameIdSpan">(まだなし)</span></p>
-  </div>
-
-  <pre id="functionsResult" style="white-space: pre-wrap; background: #f0f0f0; padding: 8px;"></pre>
-
-  <hr>
-
-  <!-- ★ここから新しく追加：ロビー / 自動マッチング(8人 or 3分で開始) -->
-  <h2>ロビー / 自動マッチング テスト（8人 or 3分で開始）</h2>
-
-  <div>
-    <label>
-      プレイヤー名（ロビー用）:
-      <input id="lobbyPlayerNameInput" type="text" placeholder="例: karappo" />
-    </label>
-    <button id="lobbyJoinBtn">ロビーに参加（キューに入る）</button>
-  </div>
-
-  <div style="margin-top: 8px;">
-    <p>自分のロビー用 UID: <span id="lobbyUidSpan">-</span></p>
-    <p>ロビー状態: <span id="lobbyStatusSpan">未参加</span></p>
-  </div>
-
-  <div style="margin-top: 8px;">
-    <h3>ロビー内プレイヤー一覧（matching/waitingRoom）</h3>
-    <ul id="lobbyPlayerList" style="background:#fafafa; padding:8px; min-height: 40px;">
-      <li>(まだ誰もいません)</li>
-    </ul>
-  </div>
-
-  <div style="margin-top: 8px;">
-    <p>ロビー制マッチでの自分のプレイヤー番号: <span id="lobbyPlayerIndexSpan">-</span></p>
-    <p>ロビー制マッチで割り当てられた gameId: <span id="lobbyGameIdSpan">(まだなし)</span></p>
-  </div>
-
-  <!-- Firebase を CDN 経由で読み込む -->
+  <!-- ロビー用スクリプト -->
   <script type="module">
-    // ★ War Game 本体 HTTP API ラッパー
-    import {
-      createNewGame,
-      submitAction,
-      requestAiAction,
-    } from "./src/war_game/serverApi.js";
-
-    // ★ ロビー用のヘルパー（waitingRoom / games を購読）
     import {
       joinMatchQueue,
       subscribeWaitingRoom,
       subscribeMyGame,
     } from "./src/matching.js";
 
-    // ★バージョン 12.6.0 で統一
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-    import {
-      getFirestore,
-      collection,
-      addDoc,
-      getDocs,
-      query,
-      orderBy,
-      limit,
-      doc,
-      onSnapshot,
-    } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
-    import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-functions.js";
-
-    // ===== Firebase コンソールの構成を貼り付け =====
-    const firebaseConfig = {
-      apiKey: "AIzaSyDllHnBnkhRFYFeDJtAQmVjMOLwUv5gSyE",
-      authDomain: "war-game-online-77a9a.firebaseapp.com",
-      projectId: "war-game-online-77a9a",
-      storageBucket: "war-game-online-77a9a.firebasestorage.app",
-      messagingSenderId: "851982602094",
-      appId: "1:851982602094:web:906903954159882bbbfb7f",
-      measurementId: "G-GYW85JHDGQ",
-    };
-    // =========================================
-
-    // Firebase 初期化
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-
-    // Cloud Functions（リージョン us-central1）
-    const functions = getFunctions(app, "us-central1");
-    const joinMatchFn = httpsCallable(functions, "joinMatch");
-    const startMatchFn = httpsCallable(functions, "startMatch");
-    const submitTurnFn = httpsCallable(functions, "submitTurn");
-
-    // Firestore テスト用 DOM
-    const resultEl = document.getElementById("result");
-    const saveBtn = document.getElementById("saveBtn");
-    const loadBtn = document.getElementById("loadBtn");
-
-    // マッチングテスト用 DOM（2人部屋制）
-    const playerNameInput = document.getElementById("playerNameInput");
-    const joinMatchBtn = document.getElementById("joinMatchBtn");
-    const roomIdSpan = document.getElementById("roomIdSpan");
-    const playerIndexSpan = document.getElementById("playerIndexSpan");
-    const roomStatusSpan = document.getElementById("roomStatusSpan");
-
-    const roomIdInput = document.getElementById("roomIdInput");
-    const startMatchBtn = document.getElementById("startMatchBtn");
-    const gameIdSpan = document.getElementById("gameIdSpan");
-
-    const functionsResult = document.getElementById("functionsResult");
-
-    const watchGameIdSpan = document.getElementById("watchGameIdSpan");
-    const currentTurnSpan = document.getElementById("currentTurnSpan");
-    const onlineNextTurnBtn = document.getElementById("onlineNextTurnBtn");
-
-    // Game API テスト用 DOM
-    const createGameBtn = document.getElementById("createGameBtn");
-    const nextTurnBtn = document.getElementById("nextTurnBtn");
-    const aiActionBtn = document.getElementById("aiActionBtn");
-    const gameStatePre = document.getElementById("gameStatePre");
-
-    // ★ ロビー / 自動マッチング用 DOM
+    // ===== DOM 取得 =====
     const lobbyPlayerNameInput = document.getElementById("lobbyPlayerNameInput");
-    const lobbyJoinBtn = document.getElementById("lobbyJoinBtn");
-    const lobbyUidSpan = document.getElementById("lobbyUidSpan");
+    const joinLobbyBtn = document.getElementById("joinLobbyBtn");
+    const myLobbyUidSpan = document.getElementById("myLobbyUidSpan");
     const lobbyStatusSpan = document.getElementById("lobbyStatusSpan");
-    const lobbyPlayerList = document.getElementById("lobbyPlayerList");
-    const lobbyPlayerIndexSpan = document.getElementById("lobbyPlayerIndexSpan");
-    const lobbyGameIdSpan = document.getElementById("lobbyGameIdSpan");
+    const lobbyTimerSpan = document.getElementById("lobbyTimerSpan");
+    const lobbyCountSpan = document.getElementById("lobbyCountSpan");
+    const lobbyPlayersList = document.getElementById("lobbyPlayersList");
+    const myLobbyIndexSpan = document.getElementById("myLobbyIndexSpan");
+    const myLobbyGameIdSpan = document.getElementById("myLobbyGameIdSpan");
 
-    // 現在の GameState をブラウザ側に保持
-    let currentGameState = null;
+    // ===== ロビー用 UID をローカルに保持 =====
+    const LOBBY_UID_KEY = "wgo_lobby_uid_v1";
+    let lobbyUid = localStorage.getItem(LOBBY_UID_KEY);
+    if (!lobbyUid) {
+      lobbyUid =
+        (window.crypto && window.crypto.randomUUID && window.crypto.randomUUID()) ||
+        "uid-" + Math.random().toString(36).slice(2);
+      localStorage.setItem(LOBBY_UID_KEY, lobbyUid);
+    }
+    myLobbyUidSpan.textContent = lobbyUid;
 
-    // オンライン対戦用の状態（2人部屋制 / ロビー制 共通で使う）
-    let onlineGameId = null;
-    let myPlayerIndex = null; // submitTurn で使う
-    let unsubscribeGame = null; // Firestore 監視の解除関数（games/<gameId>）
+    // ===== カウントダウン用の状態 =====
+    let firstJoinedMs = null; // 最初に入った人の joinedAt(ms)
+    let timerId = null;
 
-    // 2人部屋制用：参加している room の監視用
-    let watchingRoomId = null;
-    let unsubscribeRoom = null;
-
-    // ロビー制用：waitingRoom / 自分の game の監視用
-    let unsubscribeWaitingRoom = null;
-    let unsubscribeMyGame = null;
-
-    // ==============================
-    // Game API テスト（HTTP Functions）
-    // ==============================
-
-    // createNewGame ボタン
-    createGameBtn.addEventListener("click", async () => {
-      functionsResult.textContent = "createNewGame 呼び出し中...";
-
-      try {
-        // ひとまず名前やAI設定は空でOK
-        const res = await createNewGame({});
-        console.log("createNewGame result:", res);
-
-        // { ok:true, state: {...} } の想定
-        currentGameState = res.state;
-        functionsResult.textContent =
-          "createNewGame OK:\n" + JSON.stringify(res, null, 2);
-        gameStatePre.textContent =
-          JSON.stringify(currentGameState, null, 2);
-      } catch (err) {
-        console.error(err);
-        functionsResult.textContent =
-          "createNewGame エラー:\n" + String(err);
-        alert("createNewGame でエラーが発生しました（コンソールを確認）");
-      }
-    });
-
-    // submitAction（何もしないで1ターン進める）ボタン
-    nextTurnBtn.addEventListener("click", async () => {
-      if (!currentGameState) {
-        alert("まず createNewGame を実行してください。");
-        return;
-      }
-
-      functionsResult.textContent = "submitAction 呼び出し中...";
-
-      try {
-        // いまは actionsMap を空オブジェクトにして、
-        // 「全ての国が行動しないまま1ターン進める」テストだけ行う
-        const newState = await submitAction({
-          state: currentGameState,
-          actionsMap: {},
-        });
-
-        currentGameState = newState;
-        functionsResult.textContent =
-          "submitAction OK: turn = " + newState.turn;
-        gameStatePre.textContent =
-          JSON.stringify(currentGameState, null, 2);
-      } catch (err) {
-        console.error(err);
-        functionsResult.textContent =
-          "submitAction エラー:\n" + String(err);
-        alert("submitAction でエラーが発生しました（コンソールを確認）");
-      }
-    });
-
-    // requestAiAction（東京の行動をAIに決めさせる）ボタン
-    aiActionBtn.addEventListener("click", async () => {
-      if (!currentGameState) {
-        alert("まず createNewGame を実行してください。");
-        return;
-      }
-
-      functionsResult.textContent = "requestAiAction 呼び出し中...";
-
-      try {
-        // ひとまず国ID "tokyo" 固定・強いAIでテスト
-        const action = await requestAiAction({
-          state: currentGameState,
-          countryId: "tokyo",
-          aiLevel: "strong",
-        });
-
-        functionsResult.textContent =
-          "requestAiAction OK:\n" + JSON.stringify(action, null, 2);
-      } catch (err) {
-        console.error(err);
-        functionsResult.textContent =
-          "requestAiAction エラー:\n" + String(err);
-        alert("requestAiAction でエラーが発生しました（コンソールを確認）");
-      }
-    });
-
-    // ==============================
-    // Firestore / games/<gameId> の監視（共通）
-    // ==============================
-
-    // 指定した gameId のゲーム状態を Firestore からリアルタイム購読
-    function startWatchGame(gameId) {
-      if (unsubscribeGame) {
-        // 既に何か監視していたら解除
-        unsubscribeGame();
-        unsubscribeGame = null;
-      }
-
-      const gameRef = doc(db, "games", gameId);
-      unsubscribeGame = onSnapshot(
-        gameRef,
-        (snap) => {
-          if (!snap.exists()) {
-            functionsResult.textContent = `games/${gameId} が存在しません`;
-            currentTurnSpan.textContent = "-";
-            gameStatePre.textContent = "(ゲームドキュメントなし)";
-            return;
-          }
-
-          const data = snap.data();
-          watchGameIdSpan.textContent = gameId;
-          currentTurnSpan.textContent =
-            data.currentTurn != null ? String(data.currentTurn) : "(未設定)";
-
-          if (data.state) {
-            currentGameState = data.state;
-            gameStatePre.textContent = JSON.stringify(data.state, null, 2);
-          } else {
-            currentGameState = null;
-            gameStatePre.textContent = "(state がまだありません)";
-          }
-        },
-        (error) => {
-          console.error("onSnapshot error:", error);
-          functionsResult.textContent =
-            "ゲーム状態監視中にエラー:\n" + String(error);
-        }
-      );
+    function formatJoinedTime(ms) {
+      const d = new Date(ms);
+      return d.toLocaleTimeString("ja-JP", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
     }
 
-    // ==============================
-    // 2人部屋制 joinMatch / startMatch（既存機能）
-    // ==============================
-
-    // 指定した roomId の部屋情報を Firestore からリアルタイム購読
-    function startWatchRoom(roomId) {
-      // すでに他の room を監視していたら解除
-      if (unsubscribeRoom) {
-        unsubscribeRoom();
-        unsubscribeRoom = null;
+    function updateTimer() {
+      if (!firstJoinedMs) {
+        lobbyTimerSpan.textContent = "-";
+        return;
       }
 
-      watchingRoomId = roomId;
-      const roomRef = doc(db, "rooms", roomId);
+      const TOTAL_MS = 3 * 60 * 1000; // 3分
+      const elapsed = Date.now() - firstJoinedMs;
+      const remaining = TOTAL_MS - elapsed;
 
-      unsubscribeRoom = onSnapshot(
-        roomRef,
-        (snap) => {
-          if (!snap.exists()) {
-            roomStatusSpan.textContent = "(room not found)";
-            return;
-          }
+      if (remaining <= 0) {
+        lobbyTimerSpan.textContent =
+          "3分経過（サーバー側でマッチング判定中…）";
+        return;
+      }
 
-          const data = snap.data();
-          // status を常に最新表示
-          roomStatusSpan.textContent = data.status ?? "-";
-
-          const gameId = data.gameId;
-
-          // in_game かつ gameId がセットされたら、そのゲームを監視開始
-          if (data.status === "in_game" && gameId) {
-            // すでに同じ gameId を見ていたら何もしない
-            if (onlineGameId === gameId) return;
-
-            onlineGameId = gameId;
-            gameIdSpan.textContent = gameId;
-            watchGameIdSpan.textContent = gameId;
-
-            startWatchGame(gameId);
-          }
-        },
-        (error) => {
-          console.error("room onSnapshot error:", error);
-          functionsResult.textContent =
-            "マッチング部屋の監視中にエラー:\n" + String(error);
-        }
-      );
+      const sec = Math.floor(remaining / 1000);
+      const min = Math.floor(sec / 60);
+      const s = sec % 60;
+      lobbyTimerSpan.textContent =
+        `${min}:${String(s).padStart(2, "0")} 後に自動マッチング（1人目参加から）`;
     }
 
-    // joinMatch（2人部屋制）ボタン
-    joinMatchBtn.addEventListener("click", async () => {
-      const name = playerNameInput.value.trim();
-      if (!name) {
-        alert("プレイヤー名を入力してください");
-        return;
+    function startTimerIfNeeded() {
+      if (!timerId) {
+        timerId = setInterval(updateTimer, 1000);
       }
-
-      functionsResult.textContent = "joinMatch 呼び出し中...";
-
-      try {
-        const res = await joinMatchFn({ playerName: name });
-        const data = res.data;
-        console.log("joinMatch result:", data);
-
-        myPlayerIndex = data.playerIndex;
-        roomIdSpan.textContent = data.roomId;
-        playerIndexSpan.textContent = String(data.playerIndex);
-        roomStatusSpan.textContent = data.roomStatus;
-
-        roomIdInput.value = data.roomId; // 下の入力欄にも自動で反映
-
-        // この room の Firestore ドキュメントを監視開始
-        startWatchRoom(data.roomId);
-
-        functionsResult.textContent =
-          "joinMatch OK:\n" + JSON.stringify(data, null, 2);
-      } catch (err) {
-        console.error(err);
-        functionsResult.textContent = "joinMatch エラー:\n" + String(err);
-        alert("joinMatch でエラーが発生しました（コンソールを確認）");
-      }
-    });
-
-    // startMatch（2人部屋制）ボタン
-    startMatchBtn.addEventListener("click", async () => {
-      const roomId = roomIdInput.value.trim();
-      if (!roomId) {
-        alert("roomId を入力してください");
-        return;
-      }
-
-      functionsResult.textContent = "startMatch 呼び出し中...";
-
-      try {
-        const res = await startMatchFn({ roomId });
-        const data = res.data;
-        console.log("startMatch result:", data);
-
-        gameIdSpan.textContent = data.gameId;
-        functionsResult.textContent =
-          "startMatch OK:\n" + JSON.stringify(data, null, 2);
-
-        // オンライン用に gameId を保持し、Firestore の games/<gameId> を監視
-        onlineGameId = data.gameId;
-        watchGameIdSpan.textContent = data.gameId;
-        startWatchGame(data.gameId);
-        // 念のため room も監視しておく
-        startWatchRoom(roomId);
-      } catch (err) {
-        console.error(err);
-        functionsResult.textContent =
-          "startMatch エラー:\n" + String(err);
-        alert("startMatch でエラーが発生しました（コンソールを確認）");
-      }
-    });
-
-    // submitTurn（準備完了）ボタン
-    onlineNextTurnBtn.addEventListener("click", async () => {
-      if (!onlineGameId) {
-        alert("先にオンライン対戦用の gameId を取得してください（2人部屋制 or ロビー制）");
-        return;
-      }
-      if (!currentGameState) {
-        alert("GameState がまだ Firestore から取得できていません。少し待ってから再度お試しください。");
-        return;
-      }
-
-      functionsResult.textContent =
-        "submitTurn（準備完了）呼び出し中...";
-
-      try {
-        const res = await submitTurnFn({
-          gameId: onlineGameId,
-          // 2人部屋制でもロビー制でも、「ゲーム内での自分のプレイヤー番号」を使用
-          playerIndex: myPlayerIndex ?? 0,
-          // 今は「全て内政で準備完了」というテストなので actions は空配列
-          actions: [],
-        });
-
-        const data = res.data;
-        console.log("submitTurn result:", data);
-
-        // state の実体は onSnapshot 側で更新されるので、
-        // ここでは currentTurn 表示だけにしておく
-        functionsResult.textContent =
-          "submitTurn OK: currentTurn = " + data.currentTurn;
-      } catch (err) {
-        console.error(err);
-        functionsResult.textContent =
-          "submitTurn エラー:\n" + String(err);
-        alert("submitTurn でエラーが発生しました（コンソールを確認）");
-      }
-    });
-
-    // ==============================
-    // ロビー / 自動マッチング（8人 or 3分で開始）用
-    //   - matching.js の
-    //     - joinMatchQueue(user)
-    //     - subscribeWaitingRoom(callback)
-    //     - subscribeMyGame(uid, callback)
-    //     を使用
-    // ==============================
-
-    // ロビー用 UID をブラウザに保存して再利用
-    const LOBBY_UID_KEY = "warGameOnlineLobbyUid";
-
-    function generateUid() {
-      if (window.crypto && window.crypto.randomUUID) {
-        return window.crypto.randomUUID();
-      }
-      return (
-        "uid-" +
-        Date.now().toString(36) +
-        "-" +
-        Math.random().toString(36).slice(2)
-      );
+      updateTimer();
     }
 
-    let myLobbyUid = window.localStorage.getItem(LOBBY_UID_KEY);
-    if (!myLobbyUid) {
-      myLobbyUid = generateUid();
-      window.localStorage.setItem(LOBBY_UID_KEY, myLobbyUid);
+    function stopTimer() {
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+      }
+      firstJoinedMs = null;
+      lobbyTimerSpan.textContent = "-";
     }
-    lobbyUidSpan.textContent = myLobbyUid;
 
-    // waitingRoom のスナップショットから、プレイヤー一覧を表示更新
-    function updateLobbyPlayerList(data) {
+    // ===== ロビー状態を購読 =====
+    subscribeWaitingRoom((data) => {
       const players = Array.isArray(data.players) ? data.players : [];
+      lobbyCountSpan.textContent = String(players.length);
 
-      lobbyPlayerList.innerHTML = "";
-
-      if (players.length === 0) {
-        const li = document.createElement("li");
-        li.textContent = "(まだ誰もいません)";
-        lobbyPlayerList.appendChild(li);
-        return;
-      }
-
-      // joinedAt の昇順に並び替え（先に入った人が先頭）
-      players.sort((a, b) => {
+      // joinedAt 昇順で並べ替え
+      const sorted = [...players].sort((a, b) => {
         const ta =
-          a.joinedAt && typeof a.joinedAt.toMillis === "function"
-            ? a.joinedAt.toMillis()
-            : 0;
+          typeof a.joinedAt === "number"
+            ? a.joinedAt
+            : Number.MAX_SAFE_INTEGER;
         const tb =
-          b.joinedAt && typeof b.joinedAt.toMillis === "function"
-            ? b.joinedAt.toMillis()
-            : 0;
+          typeof b.joinedAt === "number"
+            ? b.joinedAt
+            : Number.MAX_SAFE_INTEGER;
         return ta - tb;
       });
 
-      for (let i = 0; i < players.length; i++) {
-        const p = players[i];
-        const li = document.createElement("li");
+      // 最初の joinedAt を取得（タイマー用）
+      const validTimes = sorted
+        .map((p) =>
+          typeof p.joinedAt === "number" ? p.joinedAt : null
+        )
+        .filter((v) => v != null);
 
-        let joinedText = "";
-        if (p.joinedAt && typeof p.joinedAt.toDate === "function") {
-          const d = p.joinedAt.toDate();
-          joinedText = d.toLocaleTimeString("ja-JP");
-        }
-
-        const isMe = p.uid === myLobbyUid;
-        li.textContent =
-          `${i + 1}. ${p.name ?? "NoName"} (${joinedText || "時刻不明"})` +
-          (isMe ? " ← あなた" : "");
-        lobbyPlayerList.appendChild(li);
+      if (validTimes.length > 0) {
+        firstJoinedMs = Math.min(...validTimes);
+        startTimerIfNeeded();
+        lobbyStatusSpan.textContent = "ロビー待機中…";
+      } else {
+        stopTimer();
+        lobbyStatusSpan.textContent = "プレイヤー待機中…";
       }
-    }
 
-    // games ドキュメントに自分の UID を含むものが作成されたときの処理
-    function handleMyGameUpdateFromLobby(game) {
+      // プレイヤー一覧を描画
+      lobbyPlayersList.innerHTML = "";
+      if (sorted.length === 0) {
+        const li = document.createElement("li");
+        li.textContent = "(まだ誰もいません)";
+        lobbyPlayersList.appendChild(li);
+      } else {
+        sorted.forEach((p) => {
+          const li = document.createElement("li");
+          const isMe = p.uid === lobbyUid;
+
+          let timeLabel = "[時刻不明]";
+          if (typeof p.joinedAt === "number") {
+            timeLabel = "[" + formatJoinedTime(p.joinedAt) + "]";
+          }
+
+          li.textContent =
+            `${p.name ?? "NoName"} ${timeLabel}` +
+            (isMe ? " ← あなた" : "");
+          lobbyPlayersList.appendChild(li);
+        });
+      }
+
+      // 自分のプレイヤー番号（1始まり）
+      const myIndex = sorted.findIndex((p) => p.uid === lobbyUid);
+      myLobbyIndexSpan.textContent = myIndex >= 0 ? String(myIndex + 1) : "-";
+    });
+
+    // ===== 自分が割り当てられたゲームを購読 =====
+    subscribeMyGame(lobbyUid, (game) => {
       if (!game) {
-        // まだゲームが作られていない
-        lobbyStatusSpan.textContent = "ロビー待機中（ゲーム未作成）";
-        lobbyGameIdSpan.textContent = "(まだなし)";
+        myLobbyGameIdSpan.textContent = "(まだなし)";
+        return;
+      }
+      myLobbyGameIdSpan.textContent = game.id ?? "(ID不明)";
+    });
+
+    // ===== 「ロビーに参加」ボタン =====
+    joinLobbyBtn.addEventListener("click", async () => {
+      const name = lobbyPlayerNameInput.value.trim();
+      if (!name) {
+        alert("プレイヤー名を入力してください。");
         return;
       }
 
-      // game.id / game.players などが参照できる想定
-      lobbyStatusSpan.textContent = "ゲームが作成されました！";
-      lobbyGameIdSpan.textContent = game.id;
-
-      // online 用にも反映して共通の画面で状態を見られるようにする
-      if (onlineGameId !== game.id) {
-        onlineGameId = game.id;
-        watchGameIdSpan.textContent = game.id;
-        startWatchGame(game.id);
-      }
-
-      // players から自分の playerIndex を探す
-      let foundIndex = null;
-      const playersObj = game.players || {};
-      for (const [key, value] of Object.entries(playersObj)) {
-        const p = value || {};
-        if (p.uid === myLobbyUid) {
-          const idx = Number(key);
-          if (!Number.isNaN(idx)) {
-            foundIndex = idx;
-            break;
-          }
-        }
-      }
-
-      if (foundIndex !== null) {
-        myPlayerIndex = foundIndex;
-        lobbyPlayerIndexSpan.textContent = String(foundIndex);
-        // 2人部屋制の表示枠にも一応反映しておく（どちらの方式でも同じ値を使うため）
-        playerIndexSpan.textContent = String(foundIndex);
-      }
-    }
-
-    // ロビー参加ボタン
-    lobbyJoinBtn.addEventListener("click", async () => {
-      const name = lobbyPlayerNameInput.value.trim() || "NoName";
-
-      const user = {
-        uid: myLobbyUid,
-        displayName: name,
-      };
-
-      lobbyStatusSpan.textContent = "ロビーに参加処理中...";
+      lobbyStatusSpan.textContent = "ロビー参加リクエスト送信中…";
 
       try {
-        // 1. waitingRoom の players 配列に自分を追加
-        await joinMatchQueue(user);
-        lobbyStatusSpan.textContent = "ロビー待機中...";
-
-        // 2. waitingRoom の状態を購読（まだ購読していなければ）
-        if (!unsubscribeWaitingRoom) {
-          unsubscribeWaitingRoom = subscribeWaitingRoom((data) => {
-            updateLobbyPlayerList(data);
-          });
-        }
-
-        // 3. 自分を含む games ドキュメントを購読（まだ購読していなければ）
-        if (!unsubscribeMyGame) {
-          unsubscribeMyGame = subscribeMyGame(myLobbyUid, (game) => {
-            handleMyGameUpdateFromLobby(game);
-          });
-        }
-
-        functionsResult.textContent =
-          "ロビー参加 OK（joinMatchQueue 完了）";
+        await joinMatchQueue({
+          uid: lobbyUid,
+          displayName: name,
+        });
+        lobbyStatusSpan.textContent = "ロビー参加 OK（待機中）";
       } catch (err) {
         console.error(err);
-        lobbyStatusSpan.textContent = "ロビー参加エラー";
-        functionsResult.textContent =
-          "ロビー参加エラー（joinMatchQueue）:\n" + String(err);
-        alert("ロビー参加中にエラーが発生しました（コンソールを確認）");
-      }
-    });
-
-    // ==============================
-    // Firestore デバッグ（既存機能）
-    // ==============================
-
-    // Firestore にテストデータを書き込み
-    saveBtn.addEventListener("click", async () => {
-      try {
-        const now = Date.now();
-        const docRef = await addDoc(collection(db, "debug-test"), {
-          createdAt: now,
-          message: "Hello from GitHub Pages!",
-        });
-        resultEl.textContent =
-          "書き込み OK\nドキュメントID: " +
-          docRef.id +
-          "\ncreatedAt: " +
-          new Date(now).toLocaleString("ja-JP");
-      } catch (e) {
-        console.error(e);
-        resultEl.textContent = "書き込みエラー:\n" + e;
-      }
-    });
-
-    // Firestore から最新データを読む
-    loadBtn.addEventListener("click", async () => {
-      try {
-        const q = query(
-          collection(db, "debug-test"),
-          orderBy("createdAt", "desc"),
-          limit(5)
-        );
-        const snap = await getDocs(q);
-
-        const lines = [];
-        snap.forEach((docSnap) => {
-          const d = docSnap.data();
-          const timeText = d.createdAt
-            ? new Date(d.createdAt).toLocaleString("ja-JP")
-            : "(createdAt 不明)";
-          lines.push(`${docSnap.id} | ${timeText} | ${d.message}`);
-        });
-
-        resultEl.textContent =
-          "読み取り OK\n" + (lines.join("\n") || "(データがまだありません)");
-      } catch (e) {
-        console.error(e);
-        resultEl.textContent = "読み取りエラー:\n" + e;
+        lobbyStatusSpan.textContent =
+          "ロビー参加エラー: " + String(err);
+        alert("ロビーへの参加中にエラーが発生しました。コンソールを確認してください。");
       }
     });
   </script>
