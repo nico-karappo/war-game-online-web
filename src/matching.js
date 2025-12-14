@@ -1,123 +1,94 @@
-// src/matching.js
-
-// Firebase v12 (CDN)
-import {
-  initializeApp,
-  getApp,
-  getApps,
-} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-
+// war-game-online-web/src/matching.js
+import { initializeApp } from "firebase/app";
+import { getAuth, signInAnonymously } from "firebase/auth";
 import {
   getFirestore,
   doc,
+  setDoc,
+  serverTimestamp,
   onSnapshot,
   runTransaction,
   collection,
   query,
-  limit,
   where,
-} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-firestore.js";
+  limit,
+} from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
-import {
-  getFunctions,
-  httpsCallable,
-} from "https://www.gstatic.com/firebasejs/12.6.0/firebase-functions.js";
-
-// ==== Firebase プロジェクト設定（index.html と同じ） ====
+// ★あなたの Firebase 設定（既存の値を維持してください）
 const firebaseConfig = {
-  apiKey: "AIzaSyDllHnBnkhRFYFeDJtAQmVjMOLwUv5gSyE",
-  authDomain: "war-game-online-77a9a.firebaseapp.com",
-  projectId: "war-game-online-77a9a",
-  storageBucket: "war-game-online-77a9a.firebasestorage.app",
-  messagingSenderId: "851982602094",
-  appId: "1:851982602094:web:906903954159882bbbfb7f",
-  measurementId: "G-GYW85JHDGQ",
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
 };
 
-// すでに別モジュールで initialize 済みなら再利用
-let app;
-if (getApps().length) {
-  app = getApp();
-} else {
-  app = initializeApp(firebaseConfig);
-}
-
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 const db = getFirestore(app);
-const functions = getFunctions(app, "us-central1");
+const functions = getFunctions(app);
 
-// Cloud Functions ラッパー
 const submitTurnFn = httpsCallable(functions, "submitTurn");
 const forceLobbyMatchFn = httpsCallable(functions, "forceLobbyMatch");
 
-/**
- * 待機列に入る（ロビーに参加）
- * @param {{ uid: string, displayName: string }} user
- */
-export async function joinMatchQueue(user) {
-  const waitingRef = doc(db, "matching", "waitingRoom");
+async function ensureAnonAuth() {
+  if (auth.currentUser) return auth.currentUser;
+  const cred = await signInAnonymously(auth);
+  return cred.user;
+}
+
+// 8人ロビー（matching/waitingRoom）に参加
+export async function joinMatchQueue(roomId, player) {
+  await ensureAnonAuth();
+
+  const roomRef = doc(db, "matching", roomId);
 
   await runTransaction(db, async (tx) => {
-    const snap = await tx.get(waitingRef);
-    const data = snap.exists() ? snap.data() : { players: [] };
+    const snap = await tx.get(roomRef);
+    const data = snap.exists() ? snap.data() : {};
 
     const players = Array.isArray(data.players) ? [...data.players] : [];
 
-    // すでに同じ uid が入っていたら何もしない
-    if (players.some((p) => p.uid === user.uid)) {
-      return;
+    const idx = players.findIndex((p) => p && p.uid === player.uid);
+    const record = {
+      uid: player.uid,
+      name: player.name ?? "",
+      joinedAt: Date.now(),
+    };
+
+    if (idx >= 0) {
+      players[idx] = { ...players[idx], ...record };
+    } else {
+      players.push(record);
     }
 
-    players.push({
-      uid: user.uid,
-      name: user.displayName || "NoName",
-      // serverTimestamp() は配列内で使えないのでクライアント時刻(ms)で代用
-      joinedAt: Date.now(),
-    });
-
     tx.set(
-      waitingRef,
-      { players },
+      roomRef,
+      {
+        roomId,
+        players,
+        updatedAt: serverTimestamp(),
+      },
       { merge: true },
     );
   });
 }
 
-/**
- * 待機列の状態を購読して UI を更新する
- *
- * @param {(data: any) => void} callback
- * @returns {() => void} unsubscribe
- */
-export function subscribeWaitingRoom(callback) {
-  const waitingRef = doc(db, "matching", "waitingRoom");
-  return onSnapshot(waitingRef, (snap) => {
-    if (!snap.exists()) {
-      callback({ players: [] });
-      return;
-    }
-    callback(snap.data());
+// ロビー待機部屋を監視
+export function subscribeWaitingRoom(roomId, callback) {
+  const roomRef = doc(db, "matching", roomId);
+  return onSnapshot(roomRef, (snap) => {
+    callback(snap.exists() ? snap.data() : null);
   });
 }
 
-/**
- * 自分が参加している最新のゲームを購読する
- *
- * @param {string} uid
- * @param {(game: {id: string, [key: string]: any} | null) => void} callback
- * @returns {() => void} unsubscribe
- */
+// 自分が所属するゲームを探す（インデックス不要版）
 export function subscribeMyGame(uid, callback) {
-  if (!uid) {
-    callback(null);
-    return () => {};
-  }
-
-  const gamesRef = collection(db, "games");
-
   const q = query(
-    gamesRef,
+    collection(db, "games"),
     where("playerIds", "array-contains", uid),
-    orderBy("createdAt", "desc"),
     limit(1),
   );
 
@@ -131,74 +102,24 @@ export function subscribeMyGame(uid, callback) {
   });
 }
 
-/**
- * 自分が参加している最新のゲームを購読する
- *
- * @param {string} uid
- * @param {(game: {id: string, [key: string]: any} | null) => void} callback
- * @returns {() => void} unsubscribe
- */
-export function subscribeMyGame(uid, callback) {
-  if (!uid) {
-    callback(null);
-    return () => {};
-  }
-
-  const gamesRef = collection(db, "games");
-
-  // ★ orderBy を使わず、playerIds に自分の uid を含むゲームを1件だけ見る
-  const q = query(
-    gamesRef,
-    where("playerIds", "array-contains", uid),
-    limit(1)
-  );
-
-  return onSnapshot(
-    q,
-    (snap) => {
-      if (snap.empty) {
-        console.log("subscribeMyGame: no game found for uid =", uid);
-        callback(null);
-        return;
-      }
-      const docSnap = snap.docs[0];
-      const gameData = { id: docSnap.id, ...docSnap.data() };
-      console.log("subscribeMyGame: game found =", gameData.id);
-      callback(gameData);
-    },
-    (error) => {
-      console.error("subscribeMyGame error:", error);
-      callback(null);
-    }
-  );
+// 特定 gameId のドキュメントを監視
+export function subscribeGame(gameId, callback) {
+  const gameRef = doc(db, "games", gameId);
+  return onSnapshot(gameRef, (snap) => {
+    callback(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+  });
 }
 
-
-/**
- * Cloud Functions submitTurn を呼び出す
- *
- * @param {string} gameId
- * @param {number} playerIndex
- * @param {any[]} actions
- * @returns {Promise<any>} res.data（currentTurn など）
- */
+// submitTurn を呼ぶ
 export async function submitTurn(gameId, playerIndex, actions) {
-  const res = await submitTurnFn({
-    gameId,
-    playerIndex,
-    actions: Array.isArray(actions) ? actions : [],
-  });
+  await ensureAnonAuth();
+  const res = await submitTurnFn({ gameId, playerIndex, actions });
   return res.data;
 }
 
-/**
- * 3分経過時などに、ロビー内プレイヤーでマッチングを実行させる
- */
-export async function callForceLobbyMatch() {
-  try {
-    await forceLobbyMatchFn();
-    console.log("forceLobbyMatch called.");
-  } catch (err) {
-    console.error("forceLobbyMatch error:", err);
-  }
+// 強制マッチ（3分タイムアウト等で使う）
+export async function callForceLobbyMatch(roomId) {
+  await ensureAnonAuth();
+  const res = await forceLobbyMatchFn({ roomId });
+  return res.data;
 }

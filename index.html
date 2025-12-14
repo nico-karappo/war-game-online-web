@@ -4,7 +4,24 @@
   <meta charset="UTF-8" />
   <title>War Game Online - ロビー</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; }
+    #kantoUiRoot { margin-top: 12px; }
+    .game-ui-wrap {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 12px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .game-ui-wrap { grid-template-columns: 1fr; }
+    }
+    details { margin-top: 12px; }
+    pre { white-space: pre-wrap; background:#eef; padding:8px; max-height: 400px; overflow:auto; }
+  </style>
 </head>
+
 <body>
   <h1>War Game Online - オンラインロビー</h1>
 
@@ -16,7 +33,6 @@
       自動的にマッチングされます。
     </p>
 
-    <!-- 名前入力＆ロビー参加ボタン -->
     <div style="margin-top: 8px;">
       <label>
         プレイヤー名（ロビー用）:
@@ -25,7 +41,6 @@
       <button id="joinLobbyBtn">ロビーに参加（キューに入る）</button>
     </div>
 
-    <!-- 自分のUIDやロビー状態 -->
     <div style="margin-top: 8px;">
       <p>自分のロビー用 UID: <span id="myLobbyUidSpan">(未生成)</span></p>
       <p>ロビー状態: <span id="lobbyStatusSpan">-</span></p>
@@ -33,7 +48,6 @@
       <p>現在の人数: <span id="lobbyCountSpan">0</span> / 8</p>
     </div>
 
-    <!-- プレイヤー一覧 -->
     <div style="margin-top: 8px;">
       <h3>ロビー内プレイヤー一覧（matching/waitingRoom）</h3>
       <ul id="lobbyPlayersList">
@@ -41,14 +55,13 @@
       </ul>
     </div>
 
-    <!-- 自分のプレイヤー番号 & gameId -->
     <div style="margin-top: 8px;">
       <p>ロビー制マッチでの自分のプレイヤー番号: <span id="myLobbyIndexSpan">-</span></p>
       <p>ロビー制マッチで割り当てられた gameId: <span id="myLobbyGameIdSpan">(まだなし)</span></p>
     </div>
   </section>
 
-  <!-- ★ ここからゲーム本体表示エリア -->
+  <!-- ゲーム本体表示エリア -->
   <section id="gameSection" style="margin-top: 24px; border-top: 1px solid #ccc; padding-top: 16px; display: none;">
     <h2>対戦中ゲーム</h2>
     <p>gameId: <span id="gameIdSpan">(未割り当て)</span></p>
@@ -59,30 +72,31 @@
       <button id="readyButton">このターンの準備完了（submitTurn）</button>
     </div>
 
-    <div style="margin-top: 8px;">
-      <h3>ゲーム内部状態（とりあえず JSON 表示）</h3>
+    <!-- ★ 地図UIの差し込み先 -->
+    <div id="kantoUiRoot"></div>
+
+    <!-- ★ デバッグ用：JSON 表示は details に退避 -->
+    <details>
+      <summary>デバッグ：ゲーム内部状態（state JSON）</summary>
       <p style="font-size: 0.9em;">
-        ※まずは Cloud Functions 側のロジックとつながっているか確認するために、
-        <code>state</code> 全体をそのまま表示しています。<br />
-        後でここをマップ UI やコマンド入力 UI に差し替えていきましょう。
+        UI作成中の確認用です。慣れたら閉じたままでもOK。
       </p>
-      <pre
-        id="gameStatePre"
-        style="white-space: pre-wrap; background:#eef; padding:8px; max-height: 400px; overflow:auto;"
-      ></pre>
-    </div>
+      <pre id="gameStatePre"></pre>
+    </details>
   </section>
 
-  <!-- ロビー ＋ ゲーム用スクリプト -->
-<script type="module">
-  import {
-    joinMatchQueue,
-    subscribeWaitingRoom,
-    subscribeMyGame,
-    subscribeGame,
-    submitTurn as submitTurnApi,
-    callForceLobbyMatch,
-  } from "./src/matching.js";
+  <script type="module">
+    import {
+      joinMatchQueue,
+      subscribeWaitingRoom,
+      subscribeMyGame,
+      subscribeGame,
+      submitTurn as submitTurnApi,
+      callForceLobbyMatch,
+    } from "./src/matching.js";
+
+    // ★ 追加：関東UI
+    import { createKantoUi } from "./src/ui/kanto_ui.js";
 
     // ===== ロビー用 DOM =====
     const lobbyPlayerNameInput = document.getElementById("lobbyPlayerNameInput");
@@ -103,6 +117,14 @@
     const gameStatePre = document.getElementById("gameStatePre");
     const readyButton = document.getElementById("readyButton");
 
+    // ===== ★ 地図UI初期化 =====
+    const kantoUiRoot = document.getElementById("kantoUiRoot");
+    const kantoUi = createKantoUi({
+      rootEl: kantoUiRoot,
+      // public/assets/kanto.png を使う前提（Viteなら /assets/... で配信されます）
+      mapImageUrl: "assets/kanto.png",
+    });
+
     // ===== ロビー用 UID をローカルに保持 =====
     const LOBBY_UID_KEY = "wgo_lobby_uid_v1";
     let lobbyUid = localStorage.getItem(LOBBY_UID_KEY);
@@ -117,10 +139,9 @@
     myLobbyUidSpan.textContent = lobbyUid;
 
     // ===== カウントダウン用の状態 =====
-    let firstJoinedMs = null; // 最初に入った人の joinedAt(ms)
+    let firstJoinedMs = null;
     let timerId = null;
-    let hasRequestedForceMatch = false; // 3分経過後に forceLobbyMatch を一度だけ呼ぶためのフラグ
-
+    let hasRequestedForceMatch = false;
 
     function formatJoinedTime(ms) {
       const d = new Date(ms);
@@ -137,18 +158,14 @@
         return;
       }
 
-      const TOTAL_MS = 3 * 60 * 1000; // 3分
+      const TOTAL_MS = 3 * 60 * 1000;
       const elapsed = Date.now() - firstJoinedMs;
       const remaining = TOTAL_MS - elapsed;
 
       if (remaining <= 0) {
-        lobbyTimerSpan.textContent =
-          "3分経過（サーバー側でマッチング判定中…）";
-
-        // ★ このクライアントからは一度だけ forceLobbyMatch を呼ぶ
+        lobbyTimerSpan.textContent = "3分経過（サーバー側でマッチング判定中…）";
         if (!hasRequestedForceMatch) {
           hasRequestedForceMatch = true;
-          // 成否は callForceLobbyMatch 内でログ出力だけしておけば十分
           callForceLobbyMatch();
         }
         return;
@@ -160,7 +177,6 @@
       lobbyTimerSpan.textContent =
         `${min}:${String(s).padStart(2, "0")} 後に自動マッチング（1人目参加から）`;
     }
-
 
     function startTimerIfNeeded() {
       if (!timerId) {
@@ -183,44 +199,30 @@
       const players = Array.isArray(data.players) ? data.players : [];
       lobbyCountSpan.textContent = String(players.length);
 
-      // joinedAt 昇順で並べ替え
       const sorted = [...players].sort((a, b) => {
-        const ta =
-          typeof a.joinedAt === "number"
-            ? a.joinedAt
-            : Number.MAX_SAFE_INTEGER;
-        const tb =
-          typeof b.joinedAt === "number"
-            ? b.joinedAt
-            : Number.MAX_SAFE_INTEGER;
+        const ta = typeof a.joinedAt === "number" ? a.joinedAt : Number.MAX_SAFE_INTEGER;
+        const tb = typeof b.joinedAt === "number" ? b.joinedAt : Number.MAX_SAFE_INTEGER;
         return ta - tb;
       });
 
-      // 最初の joinedAt を取得（タイマー用）
       const validTimes = sorted
         .map((p) => (typeof p.joinedAt === "number" ? p.joinedAt : null))
         .filter((v) => v != null);
 
       if (validTimes.length > 0) {
         const newFirst = Math.min(...validTimes);
-
-        // 最初に入室した時刻が変わったら、新しい 3分カウントを開始
         if (firstJoinedMs === null || newFirst !== firstJoinedMs) {
           firstJoinedMs = newFirst;
           hasRequestedForceMatch = false;
         }
-
         startTimerIfNeeded();
         lobbyStatusSpan.textContent = "ロビー待機中…";
       } else {
-        // ロビーが空になったらタイマーとフラグをリセット
         stopTimer();
         hasRequestedForceMatch = false;
         lobbyStatusSpan.textContent = "プレイヤー待機中…";
       }
 
-
-      // プレイヤー一覧を描画
       lobbyPlayersList.innerHTML = "";
       if (sorted.length === 0) {
         const li = document.createElement("li");
@@ -236,13 +238,11 @@
             timeLabel = "[" + formatJoinedTime(p.joinedAt) + "]";
           }
 
-          li.textContent =
-            `${p.name ?? "NoName"} ${timeLabel}` + (isMe ? " ← あなた" : "");
+          li.textContent = `${p.name ?? "NoName"} ${timeLabel}` + (isMe ? " ← あなた" : "");
           lobbyPlayersList.appendChild(li);
         });
       }
 
-      // 自分のプレイヤー番号（1始まり）
       const myIndex = sorted.findIndex((p) => p.uid === lobbyUid);
       myLobbyIndexSpan.textContent = myIndex >= 0 ? String(myIndex + 1) : "-";
     });
@@ -265,10 +265,14 @@
         currentGameId = null;
         myPlayerIndex = null;
         latestGameData = null;
+
         if (unsubscribeGame) {
           unsubscribeGame();
           unsubscribeGame = null;
         }
+
+        // ★ UI側もリセット
+        kantoUi.reset();
         return;
       }
 
@@ -277,7 +281,7 @@
       gameIdSpan.textContent = currentGameId;
       gameSection.style.display = "block";
 
-      // プレイヤー番号 (0-origin) を特定
+      // プレイヤー番号 (0-origin)
       if (Array.isArray(game.playerIds)) {
         const idx = game.playerIds.indexOf(lobbyUid);
         myPlayerIndex = idx >= 0 ? idx : 0;
@@ -285,7 +289,12 @@
         myPlayerIndex = 0;
       }
 
-      // ゲーム本体ドキュメントを監視
+      // ★ UIにコンテキストを渡す（gameId / 自分の番号）
+      kantoUi.setContext({
+        gameId: currentGameId,
+        myPlayerIndex,
+      });
+
       if (unsubscribeGame) {
         unsubscribeGame();
         unsubscribeGame = null;
@@ -297,6 +306,7 @@
           gamePhaseSpan.textContent = "-";
           gameStatePre.textContent = "(ゲームドキュメントが存在しません)";
           latestGameData = null;
+          kantoUi.setGameDoc(null);
           return;
         }
 
@@ -308,15 +318,17 @@
             : g.state && g.state.turn != null
             ? g.state.turn
             : null;
-        gameCurrentTurnSpan.textContent =
-          currentTurn != null ? String(currentTurn) : "-";
+        gameCurrentTurnSpan.textContent = currentTurn != null ? String(currentTurn) : "-";
 
         const phase =
           g.phase ??
-          (g.state &&
-            (g.state.phase || g.state.stage || g.state.status || null));
+          (g.state && (g.state.phase || g.state.stage || g.state.status || null));
         gamePhaseSpan.textContent = phase != null ? String(phase) : "-";
 
+        // ★ UIにゲームデータを渡す（ここが本命）
+        kantoUi.setGameDoc(g);
+
+        // デバッグ表示は残す
         if (g.state) {
           gameStatePre.textContent = JSON.stringify(g.state, null, 2);
         } else {
@@ -328,15 +340,11 @@
     // ===== 「このターンの準備完了」ボタン =====
     readyButton.addEventListener("click", async () => {
       if (!currentGameId) {
-        alert(
-          "まだ gameId が割り当てられていません。マッチング完了を待ってください。",
-        );
+        alert("まだ gameId が割り当てられていません。マッチング完了を待ってください。");
         return;
       }
       if (myPlayerIndex == null) {
-        alert(
-          "自分のプレイヤー番号が未確定です。少し待ってから再度お試しください。",
-        );
+        alert("自分のプレイヤー番号が未確定です。少し待ってから再度お試しください。");
         return;
       }
 
@@ -345,13 +353,15 @@
       readyButton.textContent = "送信中...";
 
       try {
-        // まずは actions は空配列でテスト（全て内政・お任せ）
-        const res = await submitTurnApi(currentGameId, myPlayerIndex, []);
-        const newTurn =
-          res && res.currentTurn != null
-            ? String(res.currentTurn)
-            : "(不明)";
+        // ★ UIが作った actions を送る（当面、UIが空配列でもOK）
+        const actions = kantoUi.getActionsForSubmit();
+        const res = await submitTurnApi(currentGameId, myPlayerIndex, actions);
+
+        const newTurn = (res && res.currentTurn != null) ? String(res.currentTurn) : "(不明)";
         alert("このターンの行動を送信しました。currentTurn = " + newTurn);
+
+        // 送信したらキューを消す（好みで）
+        kantoUi.clearPendingActions();
       } catch (err) {
         console.error(err);
         alert("submitTurn でエラーが発生しました: " + String(err));
@@ -379,11 +389,8 @@
         lobbyStatusSpan.textContent = "ロビー参加 OK（待機中）";
       } catch (err) {
         console.error(err);
-        lobbyStatusSpan.textContent =
-          "ロビー参加エラー: " + String(err);
-        alert(
-          "ロビーへの参加中にエラーが発生しました。コンソールを確認してください。",
-        );
+        lobbyStatusSpan.textContent = "ロビー参加エラー: " + String(err);
+        alert("ロビーへの参加中にエラーが発生しました。コンソールを確認してください。");
       }
     });
   </script>
